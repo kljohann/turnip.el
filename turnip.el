@@ -30,7 +30,11 @@
 (require 'dash)
 (require 's)
 
-(defvar turnip:attached-session nil)
+(defvar turnip:attached-session nil
+  "Name of the tmux session turnip is currently attached to.
+Can be changed using `turnip-attach'.")
+(defvar turnip:output-buffer-name "*turnip-output*"
+  "Name of buffer where output of tmux commands is put.")
 
 (defun turnip:session (&optional session silent)
   (or session
@@ -135,7 +139,8 @@
 
 ;;;###autoload
 (defun turnip-attach ()
-  "Attach to a particular tmux session."
+  "Prompt for and attach to a particular tmux session.
+If only one session is available, it will be used without displaying a prompt."
   (interactive)
   (let* ((sessions (turnip:list-sessions))
          (choice (if (= (length sessions) 1)
@@ -147,10 +152,7 @@
 
 (defun turnip:prompt-for-command (&optional session)
   "Interactively prompts for a tmux command to execute.
-The command will be built in several steps.  First the user can choose
-the tmux command to run.  In the next prompts completion for the options
-of this command is provided.  The command will be executed once the user
-gives an empty answer."
+See `turnip-command'."
   (-when-let* ((commands (turnip:list-commands))
                (command-names (-map #'car commands))
                (choice (completing-read "tmux " command-names nil t)))
@@ -175,6 +177,33 @@ gives an empty answer."
                      (format "%s[%s] " prompt takes-argument)
                      (turnip:completions-for-argument takes-argument session)))))))
       arguments)))
+
+;;;###autoload
+(defun turnip-command ()
+  "Interactively prompts for a tmux command to execute.
+The command will be built in several steps.  First the user can choose
+the tmux command to run.  In the next prompts completion for the options
+of this command is provided.  The command will be executed once the user
+gives an empty answer."
+  (interactive)
+  (let* ((arguments (turnip:prompt-for-command))
+         (cmd (car arguments))
+         (argument-types (cddr (assoc cmd (turnip:list-commands)))))
+    (when turnip:attached-session
+      (when (-contains? '("list-panes" "lsp") cmd)
+        (unless (or (-contains? arguments "-a")
+                    (-contains? arguments "-t"))
+          (setq arguments (-snoc arguments "-s" "-t" turnip:attached-session))))
+      (--when-let (rassoc "target-session" argument-types)
+        (unless (or (-contains? arguments (car it))
+                    (-contains? arguments "-a"))
+          (setq arguments (-snoc arguments (car it) turnip:attached-session)))))
+    (with-current-buffer (get-buffer-create turnip:output-buffer-name)
+      (barf-if-buffer-read-only)
+      (end-of-buffer)
+      (insert (format "\n## tmux %s =>\n" arguments)
+              (apply #'turnip:call-command arguments)
+              "\n"))))
 
 (provide 'turnip)
 
