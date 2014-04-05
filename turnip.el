@@ -60,55 +60,55 @@ If both session values and SILENT are nil, display an error."
           target
         (concat maybe-session ":" target)))))
 
-(defun turnip:format-status (command status &optional extra)
+(defun turnip:format-status (status &optional extra)
   (setq extra (if extra (s-prepend ": " extra) ""))
   (cond
    ((stringp status)
-    (format "(tmux %s killed by signal %s%s)" command status extra))
+    (format "(tmux killed by signal %s%s)" status extra))
    ((not (equal 0 status))
-    (format "(tmux %s failed with code %d%s)" command status extra))
-   (t (format "(tmux %s succeeded%s)" command extra))))
+    (format "(tmux failed with code %d%s)" status extra))
+   (t (format "(tmux succeeded%s)" extra))))
 
-(defun turnip:call-command (command &rest args)
-  "Call a tmux command, optionally passing arguments."
+(defun turnip:call (&rest arguments)
+  "Call a tmux with the specified arguments."
   (with-temp-buffer
-    (let ((status (apply #'call-process "tmux" nil t nil command args))
+    (let ((status (apply #'call-process "tmux" nil t nil arguments))
           (output (s-chomp (buffer-string))))
       (unless (equal 0 status)
-        (error (turnip:format-status command status output)))
+        (error (turnip:format-status status output)))
       output)))
 
-(defun turnip:call-command-split (command &rest args)
-  "Call a tmux command, optionally passing arguments.
+(defun turnip:call->lines (&rest arguments)
+  "Call a tmux with the specified arguments.
 The command output will be split on newline characters."
-  (s-lines (apply #'turnip:call-command command args)))
+  (s-lines (apply #'turnip:call arguments)))
 
 (defun turnip:list-sessions ()
-  (turnip:call-command-split "list-sessions" "-F" "#S"))
+  (turnip:call->lines "list-sessions" "-F" "#S"))
 
 (defun turnip:list-windows (&optional session)
   (let ((maybe-session (turnip:session session 'silent)))
     (append (when maybe-session
-              (turnip:call-command-split "list-windows" "-F" "#W" "-t" maybe-session))
-            (turnip:call-command-split "list-windows" "-F" "#S:#W" "-a"))))
+              (turnip:call->lines "list-windows" "-F" "#W" "-t" maybe-session))
+            (turnip:call->lines "list-windows" "-F" "#S:#W" "-a"))))
 
 (defun turnip:list-panes (&optional session)
   (let ((maybe-session (turnip:session session 'silent)))
     (append (when maybe-session
-              (turnip:call-command-split "list-panes" "-F" "#W.#P" "-s" "-t" maybe-session))
-          (turnip:call-command-split "list-panes" "-F" "#S:#W.#P" "-s" "-a")
+              (turnip:call->lines "list-panes" "-F" "#W.#P" "-s" "-t" maybe-session))
+          (turnip:call->lines "list-panes" "-F" "#S:#W.#P" "-a")
           turnip:special-panes)))
 
 (defun turnip:list-clients ()
-  (turnip:call-command-split "list-clients" "-F" "#{client_tty}"))
+  (turnip:call->lines "list-clients" "-F" "#{client_tty}"))
 
 (defun turnip:list-buffers ()
   (-map #'number-to-string
         (number-sequence
-         0 (1- (length (turnip:call-command-split "list-buffers"))))))
+         0 (1- (length (turnip:call->lines "list-buffers"))))))
 
 (defun turnip:list-executables ()
-  (let* ((path (turnip:call-command "show-environment" "-g" "PATH"))
+  (let* ((path (turnip:call "show-environment" "-g" "PATH"))
          (dirs (parse-colon-path (s-chop-prefix "PATH=" path))))
     (->> dirs
       (-map-when #'file-directory-p
@@ -133,7 +133,7 @@ The command output will be split on newline characters."
     (cons option-names option-arguments)))
 
 (defun turnip:list-commands ()
-  (let ((lines (turnip:call-command-split "list-commands")))
+  (let ((lines (turnip:call->lines "list-commands")))
     (apply
      #'append
      (-map (lambda (line)
@@ -252,7 +252,7 @@ gives an empty answer."
                        (t ""))))
         (if (> (point-max) (point-min))
             (display-message-or-buffer (current-buffer))
-          (message (turnip:format-status command status)))))))
+          (message (turnip:format-status status)))))))
 
 (provide 'turnip)
 
