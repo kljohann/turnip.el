@@ -80,12 +80,12 @@ If both session values and SILENT are nil, display an error."
                 (turnip:call->lines
                  "select-pane" "-t" window "-l"
                  ";" "list-panes" "-t" window "-F" "#{pane_id} #{pane_active}"
-                 ";" "select-pane" "-t" window "-l")))
-          (->> lines
-            (--first (s-suffix? "1" it))
-            (s-split "\\s-+")
-            car))
-      (turnip:call "display-message" "-p" "-t" target "#{pane_id}"))))
+                 ";" "select-pane" "-t" window "-l"))
+               (active (--first (s-suffix? "1" it) lines)))
+          (when active
+            (car (s-split "\\s-+" active))))
+      (ignore-errors
+        (turnip:call "display-message" "-p" "-t" target "#{pane_id}")))))
 
 (defun turnip:format-status (status &optional extra)
   (setq extra (if extra (s-prepend ": " extra) ""))
