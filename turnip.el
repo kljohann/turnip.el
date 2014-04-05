@@ -35,14 +35,33 @@
 Can be changed using `turnip-attach'.")
 (defvar turnip:output-buffer-name "*turnip-output*"
   "Name of buffer where output of tmux commands is put.")
+(defvar turnip:special-panes
+  '("last" "top" "bottom" "left" "right"
+    "top-left" "top-right" "bottom-left" "bottom-right")
+  "Special values that may be used instead of a pane index.")
 
 (defun turnip:session (&optional session silent)
+  "Fall back to `turnip:attached-session' if SESSION is nil.
+If both session values and SILENT are nil, display an error."
   (or session
       turnip:attached-session
       (unless silent
         (user-error "No session specified or attached to"))))
 
+(defun turnip:qualify (target &optional session)
+  "Add `turnip:attached-session' to TARGET if it has no session prefix."
+  (let ((maybe-session (turnip:session session 'silent)))
+    (if (not maybe-session)
+        target
+      (setq target (s-chop-prefix ":" target))
+      (when (-contains? turnip:special-panes target)
+        (setq target (s-prepend "." target)))
+      (if (s-match ":\\|^%" target)
+          target
+        (concat maybe-session ":" target)))))
+
 (defun turnip:call-command (command &rest args)
+  "Call a tmux command, optionally passing arguments."
   (with-temp-buffer
     (let ((status (apply #'call-process "tmux" nil t nil command args)))
       (unless (and (numberp status) (zerop status))
@@ -50,6 +69,8 @@ Can be changed using `turnip-attach'.")
       (s-chomp (buffer-string)))))
 
 (defun turnip:call-command-split (command &rest args)
+  "Call a tmux command, optionally passing arguments.
+The command output will be split on newline characters."
   (s-lines (apply #'turnip:call-command command args)))
 
 (defun turnip:list-sessions ()
@@ -66,8 +87,7 @@ Can be changed using `turnip-attach'.")
     (append (when maybe-session
               (turnip:call-command-split "list-panes" "-F" "#W.#P" "-s" "-t" maybe-session))
           (turnip:call-command-split "list-panes" "-F" "#S:#W.#P" "-s" "-a")
-          '("last" "top" "bottom" "left" "right"
-            "top-left" "top-right" "bottom-left" "bottom-right"))))
+          turnip:special-panes)))
 
 (defun turnip:list-clients ()
   (turnip:call-command-split "list-clients" "-F" "#{client_tty}"))
@@ -137,6 +157,13 @@ Can be changed using `turnip-attach'.")
           "targe-window"))
        (t current)))))
 
+(defun turnip:normalize-argument-value (argument value &optional session)
+  (cond
+   ((or (s-suffix? "-pane" argument)
+        (s-suffix? "-window" argument))
+    (turnip:qualify value session))
+   (t value)))
+
 ;;;###autoload
 (defun turnip-attach ()
   "Prompt for and attach to a particular tmux session.
@@ -175,7 +202,10 @@ See `turnip-command'."
               (setq choice
                     (completing-read
                      (format "%s[%s] " prompt takes-argument)
-                     (turnip:completions-for-argument takes-argument session)))))))
+                     (turnip:completions-for-argument takes-argument session))))
+            (setq choice
+                  (turnip:normalize-argument-value
+                   takes-argument choice session)))))
       arguments)))
 
 ;;;###autoload
