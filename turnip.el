@@ -32,10 +32,11 @@
 
 (defvar turnip:attached-session nil)
 
-(defun turnip:session (&optional session)
+(defun turnip:session (&optional session silent)
   (or session
       turnip:attached-session
-      (user-error "No session specified or attached to")))
+      (unless silent
+        (user-error "No session specified or attached to"))))
 
 (defun turnip:call-command (command &rest args)
   (with-temp-buffer
@@ -51,14 +52,18 @@
   (turnip:call-command-split "list-sessions" "-F" "#S"))
 
 (defun turnip:list-windows (&optional session)
-  (append (turnip:call-command-split "list-windows" "-F" "#W" "-t" (turnip:session session))
-          (turnip:call-command-split "list-windows" "-F" "#S:#W" "-a")))
+  (let ((maybe-session (turnip:session session 'silent)))
+    (append (when maybe-session
+              (turnip:call-command-split "list-windows" "-F" "#W" "-t" maybe-session))
+            (turnip:call-command-split "list-windows" "-F" "#S:#W" "-a"))))
 
 (defun turnip:list-panes (&optional session)
-  (append (turnip:call-command-split "list-panes" "-F" "#W.#P" "-s" "-t" (turnip:session session))
+  (let ((maybe-session (turnip:session session 'silent)))
+    (append (when maybe-session
+              (turnip:call-command-split "list-panes" "-F" "#W.#P" "-s" "-t" maybe-session))
           (turnip:call-command-split "list-panes" "-F" "#S:#W.#P" "-s" "-a")
           '("last" "top" "bottom" "left" "right"
-            "top-left" "top-right" "bottom-left" "bottom-right")))
+            "top-left" "top-right" "bottom-left" "bottom-right"))))
 
 (defun turnip:list-clients ()
   (turnip:call-command-split "list-clients" "-F" "#{client_tty}"))
