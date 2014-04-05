@@ -60,13 +60,23 @@ If both session values and SILENT are nil, display an error."
           target
         (concat maybe-session ":" target)))))
 
+(defun turnip:format-status (command status &optional extra)
+  (setq extra (if extra (s-prepend ": " extra) ""))
+  (cond
+   ((stringp status)
+    (format "(tmux %s killed by signal %s%s)" command status extra))
+   ((not (equal 0 status))
+    (format "(tmux %s failed with code %d%s)" command status extra))
+   (t (format "(tmux %s succeeded%s)" command extra))))
+
 (defun turnip:call-command (command &rest args)
   "Call a tmux command, optionally passing arguments."
   (with-temp-buffer
-    (let ((status (apply #'call-process "tmux" nil t nil command args)))
-      (unless (and (numberp status) (zerop status))
-        (error "Failed: %s (%s)" command status))
-      (s-chomp (buffer-string)))))
+    (let ((status (apply #'call-process "tmux" nil t nil command args))
+          (output (s-chomp (buffer-string))))
+      (unless (equal 0 status)
+        (error (turnip:format-status command status output)))
+      output)))
 
 (defun turnip:call-command-split (command &rest args)
   "Call a tmux command, optionally passing arguments.
@@ -217,10 +227,10 @@ of this command is provided.  The command will be executed once the user
 gives an empty answer."
   (interactive)
   (let* ((arguments (turnip:prompt-for-command))
-         (cmd (car arguments))
-         (argument-types (cddr (assoc cmd (turnip:list-commands)))))
+         (command (car arguments))
+         (argument-types (cddr (assoc command (turnip:list-commands)))))
     (when turnip:attached-session
-      (when (-contains? '("list-panes" "lsp") cmd)
+      (when (-contains? '("list-panes" "lsp") command)
         (unless (or (-contains? arguments "-a")
                     (-contains? arguments "-t"))
           (setq arguments (-snoc arguments "-s" "-t" turnip:attached-session))))
@@ -229,11 +239,20 @@ gives an empty answer."
                     (-contains? arguments "-a"))
           (setq arguments (-snoc arguments (car it) turnip:attached-session)))))
     (with-current-buffer (get-buffer-create turnip:output-buffer-name)
-      (barf-if-buffer-read-only)
-      (end-of-buffer)
-      (insert (format "\n## tmux %s =>\n" arguments)
-              (apply #'turnip:call-command arguments)
-              "\n"))))
+      (setq buffer-read-only nil)
+      (erase-buffer)
+      (let ((status (apply #'call-process "tmux" nil t nil arguments)))
+        (setq mode-line-process
+              (format "tmux %s%s" (s-join " " arguments)
+                      (cond
+                       ((stringp status)
+                        (format " => Signal [%s]" status))
+                       ((not (equal 0 status))
+                        (format " => Exit [%d]" status))
+                       (t ""))))
+        (if (> (point-max) (point-min))
+            (display-message-or-buffer (current-buffer))
+          (message (turnip:format-status command status)))))))
 
 (provide 'turnip)
 
