@@ -245,6 +245,23 @@ See `turnip-command'."
                    takes-argument choice session)))))
       arguments)))
 
+(defun turnip:check-pane (pane)
+  (when (not pane)
+    (user-error "Pane '%s' not found" pane))
+  (when (-contains? (turnip:panes-displaying-emacs) pane)
+    (user-error "Refusing to write to Emacs pane '%s'" pane)))
+
+;; FIXME: Maybe pass a session argument to pane-id?
+(defun turnip:send-keys (target &rest keys)
+  (let ((pane (turnip:pane-id target)))
+    (turnip:check-pane pane)
+    (apply #'turnip:call "send-keys" "-t" pane "" keys)))
+
+(defun turnip:send-text (target &rest strings)
+  (let ((pane (turnip:pane-id target)))
+    (turnip:check-pane pane)
+    (apply #'turnip:call "send-keys" "-l" "-t" pane "" strings)))
+
 ;;;###autoload
 (defun turnip-command ()
   "Interactively prompts for a tmux command to execute.
@@ -280,6 +297,33 @@ gives an empty answer."
         (if (> (point-max) (point-min))
             (display-message-or-buffer (current-buffer))
           (message (turnip:format-status status)))))))
+
+;;;###autoload
+(defun turnip-send-region (start end target)
+  "Send region to pane.
+If no mark is set defaults to send the whole buffer."
+  (interactive
+   (let ((choice
+          (completing-read
+           "Pane: " (turnip:list-panes) nil t)))
+     (append
+      (if (use-region-p)
+          (list (region-beginning) (region-end))
+        (list (point-min) (point-max)))
+      (list choice))))
+  (when (s-equals? target "")
+      (user-error "No target pane provided"))
+  (let ((pane (turnip:pane-id target)))
+    (turnip:check-pane pane)
+    (let ((buffer (current-buffer))
+          (temp (make-temp-file "turnip")))
+      (unwind-protect
+          (progn
+            (with-temp-file temp
+              (insert-buffer-substring-no-properties buffer start end))
+            (turnip:call "load-buffer" temp ";" "paste-buffer" "-d" "-t" pane)
+            (message "(region sent to pane '%s')" target))
+        (delete-file temp)))))
 
 (provide 'turnip)
 
