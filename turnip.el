@@ -48,6 +48,9 @@ If both session values and SILENT are nil, display an error."
       (unless silent
         (user-error "No session specified or attached to"))))
 
+(defun turnip:panes-displaying-emacs ()
+  (-uniq (--map (getenv "TMUX_PANE" it) (frame-list))))
+
 (defun turnip:qualify (target &optional session)
   "Add `turnip:attached-session' to TARGET if it has no session prefix."
   (let ((maybe-session (turnip:session session 'silent)))
@@ -59,6 +62,30 @@ If both session values and SILENT are nil, display an error."
       (if (s-match ":\\|^%" target)
           target
         (concat maybe-session ":" target)))))
+
+(defun turnip:pane-id (target &optional session)
+  (if (s-prefix? "%" target)
+      ;; Check if pane exists, else return nil.
+      (if (-contains?
+           (turnip:call->lines "list-panes" "-a" "-F" "#{pane_id}")
+           target)
+          target)
+
+    (setq target (turnip:qualify target session))
+
+    (if (s-suffix? ".last" target)
+        ;; To determine the last pane we need to temporarily switch to it.
+        (let* ((window (s-chop-suffix ".last" target))
+               (lines
+                (turnip:call->lines
+                 "select-pane" "-t" window "-l"
+                 ";" "list-panes" "-t" window "-F" "#{pane_id} #{pane_active}"
+                 ";" "select-pane" "-t" window "-l")))
+          (->> lines
+            (--first (s-suffix? "1" it))
+            (s-split "\\s-+")
+            car))
+      (turnip:call "display-message" "-p" "-t" target "#{pane_id}"))))
 
 (defun turnip:format-status (status &optional extra)
   (setq extra (if extra (s-prepend ": " extra) ""))
