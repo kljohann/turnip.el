@@ -109,13 +109,24 @@
                   (when alias
                     (list (cons alias options))))))) lines))))
 
-(defun turnip:completion-list-for-argument (arg &optional session)
+(defun turnip:completions-for-argument (arg &optional session)
   (cond
    ((s-suffix? "-pane" arg) (turnip:list-panes session))
    ((s-suffix? "-window" arg) (turnip:list-windows session))
    ((s-suffix? "-session" arg) (turnip:list-sessions))
    ((s-suffix? "-client" arg) (turnip:list-clients))
    ((s-equals? "buffer-index" arg) (turnip:list-buffers))))
+
+(defun turnip:normalize-argument-type (arguments current)
+  (when current
+    (let ((cmd (car arguments)))
+      (cond
+       ((and (-contains? '("list-panes" "lsp") cmd)
+             (s-prefix? "target" current))
+        (if (-contains? arguments "-s")
+            "target-session"
+          "targe-window"))
+       (t current)))))
 
 ;;;###autoload
 (defun turnip-attach ()
@@ -129,14 +140,12 @@
       (user-error "No session name provided"))
     (setq turnip:attached-session choice)))
 
-;;;###autoload
-(defun turnip-command ()
+(defun turnip:prompt-for-command (&optional session)
   "Interactively prompts for a tmux command to execute.
 The command will be built in several steps.  First the user can choose
 the tmux command to run.  In the next prompts completion for the options
 of this command is provided.  The command will be executed once the user
 gives an empty answer."
-  (interactive)
   (-when-let* ((commands (turnip:list-commands))
                (command-names (-map #'car commands))
                (choice (completing-read "tmux " command-names nil t)))
@@ -149,7 +158,9 @@ gives an empty answer."
         (setq arguments (-snoc arguments choice))
         (setq option-names (--remove (s-equals? choice it) option-names))
         (let ((prompt (format "tmux %s " (s-join " " arguments)))
-              (takes-argument (cdr (assoc choice option-arguments))))
+              (takes-argument
+               (turnip:normalize-argument-type
+                arguments (cdr (assoc choice option-arguments)))))
           (if (not takes-argument)
               (setq choice (completing-read prompt option-names))
             (setq choice "")
@@ -157,8 +168,8 @@ gives an empty answer."
               (setq choice
                     (completing-read
                      (format "%s[%s] " prompt takes-argument)
-                     (turnip:completion-list-for-argument takes-argument)))))))
-      (apply #'turnip:call-command arguments))))
+                     (turnip:completions-for-argument takes-argument session)))))))
+      arguments)))
 
 (provide 'turnip)
 
