@@ -30,6 +30,10 @@
 (require 'dash)
 (require 's)
 
+(defvar turnip:send-region-before-keys nil
+  "List of key names that will be sent at the beginning of calls to
+`turnip-send-region'.  This may be useful to reset REPLs to a known
+state, for example.")
 (defvar turnip:attached-session nil
   "Name of the tmux session turnip is currently attached to.
 Can be changed using `turnip-attach'.")
@@ -299,7 +303,7 @@ gives an empty answer."
           (message (turnip:format-status status)))))))
 
 ;;;###autoload
-(defun turnip-send-region (start end target)
+(defun turnip-send-region (start end target &optional before-keys)
   "Send region to pane.
 If no mark is set defaults to send the whole buffer."
   (interactive
@@ -311,6 +315,8 @@ If no mark is set defaults to send the whole buffer."
           (list (region-beginning) (region-end))
         (list (point-min) (point-max)))
       (list choice))))
+  (unless before-keys
+    (setq before-keys turnip:send-region-before-keys))
   (when (s-equals? target "")
       (user-error "No target pane provided"))
   (let ((pane (turnip:pane-id target)))
@@ -321,6 +327,8 @@ If no mark is set defaults to send the whole buffer."
           (progn
             (with-temp-file temp
               (insert-buffer-substring-no-properties buffer start end))
+            (when before-keys
+              (apply #'turnip:send-keys pane before-keys))
             (turnip:call "load-buffer" temp ";" "paste-buffer" "-d" "-t" pane)
             (message "(region sent to pane '%s')" target))
         (delete-file temp)))))
