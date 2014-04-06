@@ -57,6 +57,8 @@ This may be useful to unindent code intended for a python REPL, for example."
 (defvar turnip:attached-session nil
   "Name of the tmux session turnip is currently attached to.
 Can be changed using `turnip-attach'.")
+(defvar turnip:last-pane nil
+  "Pane id of the last pane used with `turnip-send-region'.")
 (defvar turnip:special-panes
   '("last" "top" "bottom" "left" "right"
     "top-left" "top-right" "bottom-left" "bottom-right")
@@ -106,8 +108,13 @@ If both session values and SILENT are nil, display an error."
                (active (--first (s-suffix? "1" it) lines)))
           (when active
             (car (s-split "\\s-+" active))))
-      (ignore-errors
-        (turnip:call "display-message" "-p" "-t" target "#{pane_id}")))))
+      (turnip:format-pane-id target "#{pane_id}"))))
+
+(defun turnip:format-pane-id (pane &optional fmt)
+  "Format PANE according to the tmux format string FMT."
+  (unless fmt
+    (setq fmt "#S:#W.#P"))
+  (ignore-errors (turnip:call "display-message" "-p" "-t" pane fmt)))
 
 (defun turnip:format-status (status &optional extra)
   (setq extra (if extra (s-prepend ": " extra) ""))
@@ -226,7 +233,8 @@ The command output will be split on newline characters."
 ;;;###autoload
 (defun turnip-attach ()
   "Prompt for and attach to a particular tmux session.
-If only one session is available, it will be used without displaying a prompt."
+If only one session is available, it will be used without displaying a prompt.
+This also resets the last used pane."
   (interactive)
   (let* ((sessions (turnip:list-sessions))
          (choice (if (= (length sessions) 1)
@@ -234,7 +242,8 @@ If only one session is available, it will be used without displaying a prompt."
                    (completing-read "Session: " sessions nil t))))
     (when (s-equals? choice "")
       (user-error "No session name provided"))
-    (setq turnip:attached-session choice)))
+    (setq turnip:attached-session choice
+          turnip:last-pane nil)))
 
 (defun turnip:prompt-for-command (&optional session)
   "Interactively prompts for a tmux command to execute.
@@ -321,13 +330,15 @@ gives an empty answer."
           (message (turnip:format-status status)))))))
 
 ;;;###autoload
-(defun turnip-send-region (start end target &optional before-keys)
+(defun turnip-send-region (start end &optional target before-keys)
   "Send region to pane.
-If no mark is set defaults to send the whole buffer."
+If no mark is set defaults to send the whole buffer.
+The last used pane is saved and used as a default on subsequent calls."
   (interactive
-   (let ((choice
-          (completing-read
-           "Pane: " (turnip:list-panes) nil t)))
+   (let* ((prompt
+           (concat
+            "Pane" (turnip:format-pane-id turnip:last-pane " [#S:#W.#P]") ": "))
+          (choice (completing-read prompt (turnip:list-panes) nil t)))
      (append
       (if (use-region-p)
           (list (region-beginning) (region-end))
@@ -335,10 +346,15 @@ If no mark is set defaults to send the whole buffer."
       (list choice))))
   (unless before-keys
     (setq before-keys turnip-send-region-before-keys))
-  (when (s-equals? target "")
-      (user-error "No target pane provided"))
+
+  (when (or (not target) (s-equals? target ""))
+    (if turnip:last-pane
+        (setq target turnip:last-pane)
+      (user-error "No target pane provided")))
+
   (let ((pane (turnip:pane-id target)))
     (turnip:check-pane pane)
+    (setq turnip:last-pane pane)
     (let ((buffer (current-buffer))
           (temp (make-temp-file "turnip")))
       (unwind-protect
@@ -349,7 +365,7 @@ If no mark is set defaults to send the whole buffer."
             (when before-keys
               (apply #'turnip:send-keys pane before-keys))
             (turnip:call "load-buffer" temp ";" "paste-buffer" "-d" "-t" pane)
-            (message "(region sent to pane '%s')" target))
+            (message "(region sent to pane '%s')" (turnip:format-pane-id pane)))
         (delete-file temp)))))
 
 (provide 'turnip)
