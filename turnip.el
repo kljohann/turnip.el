@@ -230,21 +230,6 @@ The command output will be split on newline characters."
     (turnip:qualify value session))
    (t value)))
 
-;;;###autoload
-(defun turnip-attach ()
-  "Prompt for and attach to a particular tmux session.
-If only one session is available, it will be used without displaying a prompt.
-This also resets the last used pane."
-  (interactive)
-  (let* ((sessions (turnip:list-sessions))
-         (choice (if (= (length sessions) 1)
-                     (car sessions)
-                   (completing-read "Session: " sessions nil t))))
-    (when (s-equals? choice "")
-      (user-error "No session name provided"))
-    (setq turnip:attached-session choice
-          turnip:last-pane nil)))
-
 (defun turnip:prompt-for-command (&optional session)
   "Interactively prompts for a tmux command to execute.
 See `turnip-command'."
@@ -292,6 +277,21 @@ See `turnip-command'."
   (let ((pane (turnip:pane-id target)))
     (turnip:check-pane pane)
     (apply #'turnip:call "send-keys" "-l" "-t" pane "" strings)))
+
+;;;###autoload
+(defun turnip-attach ()
+  "Prompt for and attach to a particular tmux session.
+If only one session is available, it will be used without displaying a prompt.
+This also resets the last used pane."
+  (interactive)
+  (let* ((sessions (turnip:list-sessions))
+         (choice (if (= (length sessions) 1)
+                     (car sessions)
+                   (completing-read "Session: " sessions nil t))))
+    (when (s-equals? choice "")
+      (user-error "No session name provided"))
+    (setq turnip:attached-session choice
+          turnip:last-pane nil)))
 
 ;;;###autoload
 (defun turnip-command ()
