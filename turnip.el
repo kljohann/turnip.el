@@ -30,15 +30,33 @@
 (require 'dash)
 (require 's)
 
-(defvar turnip:send-region-before-keys nil
-  "List of key names that will be sent at the beginning of calls to
-`turnip-send-region'.  This may be useful to reset REPLs to a known
-state, for example.")
+(defgroup turnip nil
+  "Interacting with tmux from Emacs."
+  :group 'tools)
+
+(defcustom turnip-send-region-before-keys nil
+  "Keys to send to a tmux pane before sending any other text.
+This may be useful to reset REPLs to a known state, for example.
+See `turnip-send-region' for where this is used."
+  :group 'turnip
+  :type '(repeat (string :tag "Key name or text")))
+
+(defcustom turnip-send-region-prepare-hook nil
+  "Hook to run when sending text to tmux.
+The Hook will run on a temporary buffer containing the text to be sent.
+The pane id of the target pane will be passed as a parameter.
+This may be useful to unindent code intended for a python REPL, for example."
+  :group 'turnip
+  :type 'hook)
+
+(defcustom turnip-output-buffer-name "*turnip-output*"
+  "Name of buffer where output of tmux commands is put."
+  :group 'turnip
+  :type 'string)
+
 (defvar turnip:attached-session nil
   "Name of the tmux session turnip is currently attached to.
 Can be changed using `turnip-attach'.")
-(defvar turnip:output-buffer-name "*turnip-output*"
-  "Name of buffer where output of tmux commands is put.")
 (defvar turnip:special-panes
   '("last" "top" "bottom" "left" "right"
     "top-left" "top-right" "bottom-left" "bottom-right")
@@ -286,7 +304,7 @@ gives an empty answer."
         (unless (or (-contains? arguments (car it))
                     (-contains? arguments "-a"))
           (setq arguments (-snoc arguments (car it) turnip:attached-session)))))
-    (with-current-buffer (get-buffer-create turnip:output-buffer-name)
+    (with-current-buffer (get-buffer-create turnip-output-buffer-name)
       (setq buffer-read-only nil)
       (erase-buffer)
       (let ((status (apply #'call-process "tmux" nil t nil arguments)))
@@ -316,7 +334,7 @@ If no mark is set defaults to send the whole buffer."
         (list (point-min) (point-max)))
       (list choice))))
   (unless before-keys
-    (setq before-keys turnip:send-region-before-keys))
+    (setq before-keys turnip-send-region-before-keys))
   (when (s-equals? target "")
       (user-error "No target pane provided"))
   (let ((pane (turnip:pane-id target)))
@@ -326,7 +344,8 @@ If no mark is set defaults to send the whole buffer."
       (unwind-protect
           (progn
             (with-temp-file temp
-              (insert-buffer-substring-no-properties buffer start end))
+              (insert-buffer-substring-no-properties buffer start end)
+              (run-hook-with-args turnip-send-region-prepare-hook pane))
             (when before-keys
               (apply #'turnip:send-keys pane before-keys))
             (turnip:call "load-buffer" temp ";" "paste-buffer" "-d" "-t" pane)
