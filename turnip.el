@@ -330,6 +330,34 @@ gives an empty answer."
           (message (turnip:format-status status)))))))
 
 ;;;###autoload
+(defun turnip-send-region-to-buffer (start end &optional tmux-buffer with-buffer)
+  "Send region to a tmux buffer.
+If no mark is set defaults to send the whole buffer."
+  (interactive
+   (let ((choice (completing-read "Buffer: " (turnip:list-buffers))))
+     (append
+      (if (use-region-p)
+          (list (region-beginning) (region-end))
+        (list (point-min) (point-max)))
+      (list choice))))
+
+  (when (s-equals? tmux-buffer "")
+    (setq tmux-buffer nil))
+
+  (let ((buffer (current-buffer))
+          (temp (make-temp-file "turnip")))
+      (unwind-protect
+          (progn
+            (with-temp-file temp
+              (insert-buffer-substring-no-properties buffer start end)
+              (run-hooks turnip-send-region-prepare-hook))
+            (apply #'turnip:call "load-buffer"
+                   (-snoc (when tmux-buffer (list "-b" tmux-buffer)) temp))
+            (when with-buffer
+              (funcall with-buffer tmux-buffer)))
+        (delete-file temp))))
+
+;;;###autoload
 (defun turnip-send-region (start end &optional target before-keys)
   "Send region to pane.
 If no mark is set defaults to send the whole buffer.
@@ -344,6 +372,7 @@ The last used pane is saved and used as a default on subsequent calls."
           (list (region-beginning) (region-end))
         (list (point-min) (point-max)))
       (list choice))))
+
   (unless before-keys
     (setq before-keys turnip-send-region-before-keys))
 
@@ -355,18 +384,13 @@ The last used pane is saved and used as a default on subsequent calls."
   (let ((pane (turnip:pane-id target)))
     (turnip:check-pane pane)
     (setq turnip:last-pane pane)
-    (let ((buffer (current-buffer))
-          (temp (make-temp-file "turnip")))
-      (unwind-protect
-          (progn
-            (with-temp-file temp
-              (insert-buffer-substring-no-properties buffer start end)
-              (run-hook-with-args turnip-send-region-prepare-hook pane))
-            (when before-keys
-              (apply #'turnip:send-keys pane before-keys))
-            (turnip:call "load-buffer" temp ";" "paste-buffer" "-d" "-t" pane)
-            (message "(region sent to pane '%s')" (turnip:format-pane-id pane)))
-        (delete-file temp)))))
+    (turnip-send-region-to-buffer
+     start end nil
+     (lambda (buffer)
+       (when before-keys
+         (apply #'turnip:send-keys pane before-keys))
+       (turnip:call "paste-buffer" "-d" "-t" pane)
+       (message "(region sent to pane '%s')" (turnip:format-pane-id pane))))))
 
 (provide 'turnip)
 
