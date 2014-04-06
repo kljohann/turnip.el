@@ -4,7 +4,7 @@
 
 ;; Author: Johann Klähn <kljohann@gmail.com>
 
-;; Keywords: tmux
+;; Keywords: terminals, tools
 ;; Package-Requires: ((dash "2.6.0") (s "1.9.0"))
 
 ;; This program is free software; you can redistribute it and/or modify

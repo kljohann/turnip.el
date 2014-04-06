@@ -2,9 +2,13 @@
 *Interacting with tmux from Emacs*
 
 Turnip is a package to ease interacting with a tmux session from Emacs.
-Its scope and philosophy is inspired by Tim Pope's [vim-tbone][tbone].
+Its scope and philosophy is inspired by Tim Pope's [vim-tbone][].
 
-[tbone]: https://github.com/tpope/vim-tbone
+## Installation
+
+Turnip is available on [MELPA][]:
+
+    M-x package-install turnip
 
 ## Interactive Functions
 
@@ -19,28 +23,27 @@ This also resets the last used pane.
 ### turnip-command
 
 Interactively prompts for a tmux command and arguments then executes
-this command once no more input is provided (cancel using `C-g`, as usual)[^1]:
+this command once no more input is provided (cancel using `C-g`, as usual):
 
-[^1]: Note that I'm using [ido-ubiquitous](https://github.com/DarwinAwardWinner/ido-ubiquitous)
-      and [ido-vertical-mode](https://github.com/gempesaw/ido-vertical-mode.el).
+<small>*Note that I'm using [ido-ubiquitous][] and [ido-vertical-mode][].*</small>
 
 Select the tmux command and press `RET`:
-<img src="doc/command-1.png">
+![emacs mode line: tmux <split>](doc/command-1.png)
 
 Select an option or enter any text to use as next argument:
-<img src="doc/command-2.png">
+![emacs mode line: tmux split-window](doc/command-2.png)
 
 Here `-h` was entered:
-<img src="doc/command-3.png">
+![emacs mode line: tmux split-window <-h>](doc/command-3.png)
 
 After pressing `RET` and entering `-t`:
-<img src="doc/command-4.png">
+![emacs mode line: tmux split-window -h <-t>](doc/command-4.png)
 
 After pressing `RET` once again, completion for the target pane is offered:
-<img src="doc/command-5.png">
+![emacs mode line: tmux split-window -h -t <target-pane>](doc/command-5.png)
 
 After the next press of `RET`, execution is only one key press away!
-<img src="doc/command-6.png">
+![emacs mode line: tmux split-window -h -t 1st-session:zsh.0](doc/command-6.png)
 
 Just confirm once more and the command will be sent to tmux.
 
@@ -69,3 +72,9 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+[MELPA]: http://melpa.milkbox.net
+[vim-tbone]: https://github.com/tpope/vim-tbone
+[ido-ubiquitous]: https://github.com/DarwinAwardWinner/ido-ubiquitous
+[ido-vertical-mode]: https://github.com/gempesaw/ido-vertical-mode.el
