@@ -92,7 +92,10 @@ If both session values and SILENT are nil, display an error."
 
 (defun turnip:panes-displaying-emacs ()
   "Return a list of tmux panes that contain frames of this emacs session."
-  (-uniq (--map (getenv "TMUX_PANE" it) (frame-list))))
+  (->> (frame-list)
+    (-map (lambda (frame) (getenv "TMUX_PANE" frame)))
+    (-uniq)
+    (-filter #'identity)))
 
 (defun turnip:qualify (target &optional session)
   "Prefix TARGET with SESSION or `turnip:attached-session' if it has
@@ -126,7 +129,7 @@ no prefix yet and isn't a pane id."
                  "select-pane" "-t" window "-l"
                  ";" "list-panes" "-t" window "-F" "#{pane_id} #{pane_active}"
                  ";" "select-pane" "-t" window "-l"))
-               (active (--first (s-suffix? "1" it) lines)))
+               (active (-first (lambda (line) (s-suffix? "1" line)) lines)))
           (when active
             (car (s-split "\\s-+" active))))
       (turnip:format-pane-id target "#{pane_id}"))))
@@ -216,7 +219,10 @@ session are included without a session prefix."
         (-when-let*
             ((matches (s-match-strings-all
                        "[[|]\\(-\\w\\)\\s-+\\([^]|]+\\)[]|]" line)))
-          (--map (cons (cadr it) (-last-item it)) matches))))
+          (-map
+           (lambda (match)
+             (cons (cadr match) (-last-item match)))
+           matches))))
     (cons option-names option-arguments)))
 
 (defun turnip:list-commands ()
@@ -268,13 +274,21 @@ See `turnip-command'."
                (command-names (-map #'car commands))
                (choice (completing-read "tmux " command-names nil t)))
     (let* ((options (cdr (assoc choice commands)))
-           (option-names (--map (concat "-" (list it)) (car options)))
+           (option-names
+            (-map
+             (lambda (char)
+               (concat "-" (list char)))
+             (car options)))
            (option-arguments (cdr options))
            (arguments))
 
       (while (not (s-equals? choice ""))
         (setq arguments (-snoc arguments choice))
-        (setq option-names (--remove (s-equals? choice it) option-names))
+        (setq option-names
+              (-remove
+               (lambda (maybe-flag)
+                 (s-equals? choice maybe-flag))
+               option-names))
         (let ((prompt (format "tmux %s " (s-join " " arguments)))
               (takes-argument
                (turnip:normalize-argument-type
@@ -352,10 +366,11 @@ gives an empty answer."
         (unless (or (-contains? arguments "-a")
                     (-contains? arguments "-t"))
           (setq arguments (-snoc arguments "-s" "-t" turnip:attached-session))))
-      (--when-let (rassoc "target-session" argument-types)
-        (unless (or (-contains? arguments (car it))
+      (-when-let* ((option (rassoc "target-session" argument-types))
+                   (flag (car option)))
+        (unless (or (-contains? arguments flag)
                     (-contains? arguments "-a"))
-          (setq arguments (-snoc arguments (car it) turnip:attached-session)))))
+          (setq arguments (-snoc arguments flag turnip:attached-session)))))
     (with-current-buffer (get-buffer-create turnip-output-buffer-name)
       (setq buffer-read-only nil)
       (erase-buffer)
