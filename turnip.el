@@ -30,6 +30,8 @@
 (require 'dash)
 (require 's)
 
+;;;; Custom Options
+
 (defgroup turnip nil
   "Interacting with tmux from Emacs."
   :group 'tools)
@@ -54,6 +56,8 @@ This may be useful to unindent code intended for a python REPL, for example."
   :group 'turnip
   :type 'string)
 
+;;;; Internal Variables
+
 (defvar turnip:attached-session nil
   "Name of the tmux session turnip is currently attached to.
 Can be changed using `turnip-attach'.")
@@ -64,6 +68,8 @@ Can be changed using `turnip-attach'.")
     "top-left" "top-right" "bottom-left" "bottom-right")
   "Special values that may be used instead of a pane index.")
 
+;;;; Utility Functions
+
 (defun turnip:session (&optional session silent)
   "Fall back to `turnip:attached-session' if SESSION is nil.
 If both session values and SILENT are nil, display an error."
@@ -72,11 +78,25 @@ If both session values and SILENT are nil, display an error."
       (unless silent
         (user-error "No session specified or attached to"))))
 
+;;;; tmux Panes
+
+(defun turnip:pane-id-p (target)
+  "Return t if TARGET has the form of a pane id."
+  (and t (s-match "^%[0-9]+$" target)))
+
+(defun turnip:format-pane-id (pane &optional fmt)
+  "Format PANE according to the tmux format string FMT."
+  (unless fmt
+    (setq fmt "#S:#W.#P"))
+  (ignore-errors (turnip:call "display-message" "-p" "-t" pane fmt)))
+
 (defun turnip:panes-displaying-emacs ()
+  "Return a list of tmux panes that contain frames of this emacs session."
   (-uniq (--map (getenv "TMUX_PANE" it) (frame-list))))
 
 (defun turnip:qualify (target &optional session)
-  "Add `turnip:attached-session' to TARGET if it has no session prefix."
+  "Prefix TARGET with SESSION or `turnip:attached-session' if it has
+no prefix yet and isn't a pane id."
   (let ((maybe-session (turnip:session session 'silent)))
     (if (not maybe-session)
         target
@@ -88,6 +108,7 @@ If both session values and SILENT are nil, display an error."
         (concat maybe-session ":" target)))))
 
 (defun turnip:pane-id (target &optional session)
+  "Return the unique pane id of TARGET in SESSION if it exists, else nil."
   (if (s-prefix? "%" target)
       ;; Check if pane exists, else return nil.
       (if (-contains?
@@ -110,13 +131,22 @@ If both session values and SILENT are nil, display an error."
             (car (s-split "\\s-+" active))))
       (turnip:format-pane-id target "#{pane_id}"))))
 
-(defun turnip:format-pane-id (pane &optional fmt)
-  "Format PANE according to the tmux format string FMT."
-  (unless fmt
-    (setq fmt "#S:#W.#P"))
-  (ignore-errors (turnip:call "display-message" "-p" "-t" pane fmt)))
+(defun turnip:normalize-and-check-target-pane (target)
+  "Convert TARGET to a pane id and check that writing to it is sensible.
+See `turnip:pane-id' and `turnip:panes-displaying-emacs'."
+  (let ((pane (turnip:pane-id target)))
+    (when (not pane)
+      (user-error "Pane '%s' not found" target))
+    (when (-contains? (turnip:panes-displaying-emacs) pane)
+      (user-error "Refusing to write to Emacs pane '%s'" pane))
+    pane))
+
+;;;; Calling tmux Processes
 
 (defun turnip:format-status (status &optional extra)
+  "Format the exit status of a tmux call for display to the user.
+See the return value of `call-process' for possible values for STATUS.
+EXTRA may contain further information that is appended to the message."
   (setq extra (if extra (s-prepend ": " extra) ""))
   (cond
    ((stringp status)
@@ -126,7 +156,7 @@ If both session values and SILENT are nil, display an error."
    (t (format "(tmux succeeded%s)" extra))))
 
 (defun turnip:call (&rest arguments)
-  "Call a tmux with the specified arguments."
+  "Call tmux with the specified arguments."
   (with-temp-buffer
     (let ((status (apply #'call-process "tmux" nil t nil arguments))
           (output (s-chomp (buffer-string))))
@@ -139,16 +169,25 @@ If both session values and SILENT are nil, display an error."
 The command output will be split on newline characters."
   (s-lines (apply #'turnip:call arguments)))
 
+;;;; Completion Data Providers
+
 (defun turnip:list-sessions ()
+  "Return a list of tmux sessions."
   (turnip:call->lines "list-sessions" "-F" "#S"))
 
 (defun turnip:list-windows (&optional session)
+  "Return a list of tmux windows.
+If SESSION is provided or `turnip:attached-session' is set, windows from that
+session are included without a session prefix."
   (let ((maybe-session (turnip:session session 'silent)))
     (append (when maybe-session
               (turnip:call->lines "list-windows" "-F" "#W" "-t" maybe-session))
             (turnip:call->lines "list-windows" "-F" "#S:#W" "-a"))))
 
 (defun turnip:list-panes (&optional session)
+  "Return a list of tmux panes.
+If SESSION is provided or `turnip:attached-session' is set, panes from that
+session are included without a session prefix."
   (let ((maybe-session (turnip:session session 'silent)))
     (append (when maybe-session
               (turnip:call->lines "list-panes" "-F" "#W.#P" "-s" "-t" maybe-session))
@@ -156,25 +195,17 @@ The command output will be split on newline characters."
           turnip:special-panes)))
 
 (defun turnip:list-clients ()
+  "Return a list of clients attached to tmux."
   (turnip:call->lines "list-clients" "-F" "#{client_tty}"))
 
 (defun turnip:list-buffers ()
+  "Return a list of tmux buffers."
   (-map #'number-to-string
         (number-sequence
          0 (1- (length (turnip:call->lines "list-buffers"))))))
 
-(defun turnip:list-executables ()
-  (let* ((path (turnip:call "show-environment" "-g" "PATH"))
-         (dirs (parse-colon-path (s-chop-prefix "PATH=" path))))
-    (->> dirs
-      (-map-when #'file-directory-p
-                 (lambda (dir)
-                   (--filter (file-executable-p (expand-file-name it dir))
-                             (directory-files dir nil nil 'nosort))))
-      -flatten
-      -uniq)))
-
 (defun turnip:parse-command-options (line)
+  "Parse command line options as formatted in tmux' list-commands output."
   (let
       ((option-names
         (->> line
@@ -261,37 +292,49 @@ See `turnip-command'."
                    takes-argument choice session)))))
       arguments)))
 
-(defun turnip:check-pane (pane)
-  (when (not pane)
-    (user-error "Pane '%s' not found" pane))
-  (when (-contains? (turnip:panes-displaying-emacs) pane)
-    (user-error "Refusing to write to Emacs pane '%s'" pane)))
-
 ;; FIXME: Maybe pass a session argument to pane-id?
 (defun turnip:send-keys (target &rest keys)
-  (let ((pane (turnip:pane-id target)))
-    (turnip:check-pane pane)
-    (apply #'turnip:call "send-keys" "-t" pane "" keys)))
+  (setq target (turnip:normalize-and-check-target-pane target))
+  (apply #'turnip:call "send-keys" "-t" target "" keys))
 
 (defun turnip:send-text (target &rest strings)
-  (let ((pane (turnip:pane-id target)))
-    (turnip:check-pane pane)
-    (apply #'turnip:call "send-keys" "-l" "-t" pane "" strings)))
+  (setq target (turnip:normalize-and-check-target-pane target))
+  (apply #'turnip:call "send-keys" "-l" "-t" target "" strings))
 
 ;;;###autoload
-(defun turnip-attach ()
+(defun turnip-attach (session)
   "Prompt for and attach to a particular tmux session.
 If only one session is available, it will be used without displaying a prompt.
 This also resets the last used pane."
-  (interactive)
-  (let* ((sessions (turnip:list-sessions))
-         (choice (if (= (length sessions) 1)
-                     (car sessions)
-                   (completing-read "Session: " sessions nil t))))
-    (when (s-equals? choice "")
-      (user-error "No session name provided"))
-    (setq turnip:attached-session choice
-          turnip:last-pane nil)))
+  (interactive
+   (let* ((sessions (turnip:list-sessions))
+          (choice (if (= (length sessions) 1)
+                      (car sessions)
+                    (completing-read "Session: " sessions nil t))))
+     (when (s-equals? choice "")
+       (user-error "No session name provided"))
+     (list choice)))
+
+   (setq turnip:attached-session session
+         turnip:last-pane nil))
+
+;;;###autoload
+(defun turnip-choose-pane (target)
+  "Prompt for a tmux pane if called interactively.
+The last used pane is saved and used as a default on subsequent calls. "
+  (interactive
+   (let* ((default turnip:last-pane)
+          (prompt
+           (concat "Pane" (turnip:format-pane-id default " [#S:#W.#P]") ": "))
+          (choice (completing-read prompt (turnip:list-panes) nil t)))
+
+     (when (s-equals? choice "")
+       (if default
+           (setq choice default)
+         (user-error "No target pane provided")))
+     (list choice)))
+
+  (setq turnip:last-pane (turnip:normalize-and-check-target-pane target)))
 
 ;;;###autoload
 (defun turnip-command ()
@@ -358,39 +401,30 @@ If no mark is set defaults to send the whole buffer."
         (delete-file temp))))
 
 ;;;###autoload
-(defun turnip-send-region (start end &optional target before-keys)
+(defun turnip-send-region (start end target &optional before-keys)
   "Send region to pane.
 If no mark is set defaults to send the whole buffer.
-The last used pane is saved and used as a default on subsequent calls."
+If called interactively the last used pane is saved and used as a default on subsequent calls."
   (interactive
-   (let* ((prompt
-           (concat
-            "Pane" (turnip:format-pane-id turnip:last-pane " [#S:#W.#P]") ": "))
-          (choice (completing-read prompt (turnip:list-panes) nil t)))
-     (append
-      (if (use-region-p)
-          (list (region-beginning) (region-end))
-        (list (point-min) (point-max)))
-      (list choice))))
+   (append
+    (if (use-region-p)
+        (list (region-beginning) (region-end))
+      (list (point-min) (point-max)))
+    (list (call-interactively #'turnip-choose-pane))))
 
   (unless before-keys
     (setq before-keys turnip-send-region-before-keys))
 
-  (when (or (not target) (s-equals? target ""))
-    (if turnip:last-pane
-        (setq target turnip:last-pane)
-      (user-error "No target pane provided")))
+  (unless (called-interactively-p)
+    (setq target (turnip:normalize-and-check-target-pane target)))
 
-  (let ((pane (turnip:pane-id target)))
-    (turnip:check-pane pane)
-    (setq turnip:last-pane pane)
-    (turnip-send-region-to-buffer
-     start end nil
-     (lambda (buffer)
-       (when before-keys
-         (apply #'turnip:send-keys pane before-keys))
-       (turnip:call "paste-buffer" "-d" "-t" pane)
-       (message "(region sent to pane '%s')" (turnip:format-pane-id pane))))))
+  (turnip-send-region-to-buffer
+   start end nil
+   (lambda (buffer)
+     (when before-keys
+       (apply #'turnip:send-keys target before-keys))
+     (turnip:call "paste-buffer" "-d" "-t" target)
+     (message "(region sent to pane '%s')" (turnip:format-pane-id target)))))
 
 (provide 'turnip)
 
