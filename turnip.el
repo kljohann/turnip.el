@@ -194,8 +194,8 @@ session are included without a session prefix."
   (let ((maybe-session (turnip:session session 'silent)))
     (append (when maybe-session
               (turnip:call->lines "list-panes" "-F" "#W.#P" "-s" "-t" maybe-session))
-          (turnip:call->lines "list-panes" "-F" "#S:#W.#P" "-a")
-          turnip:special-panes)))
+            (turnip:call->lines "list-panes" "-F" "#S:#W.#P" "-a")
+            turnip:special-panes)))
 
 (defun turnip:list-clients ()
   "Return a list of clients attached to tmux."
@@ -329,8 +329,8 @@ This also resets the last used pane."
        (user-error "No session name provided"))
      (list choice)))
 
-   (setq turnip:attached-session session
-         turnip:last-pane nil))
+  (setq turnip:attached-session session
+        turnip:last-pane nil))
 
 ;;;###autoload
 (defun turnip-choose-pane (target)
@@ -403,17 +403,17 @@ If no mark is set defaults to send the whole buffer."
     (setq tmux-buffer nil))
 
   (let ((buffer (current-buffer))
-          (temp (make-temp-file "turnip")))
-      (unwind-protect
-          (progn
-            (with-temp-file temp
-              (insert-buffer-substring-no-properties buffer start end)
-              (run-hooks turnip-send-region-prepare-hook))
-            (apply #'turnip:call "load-buffer"
-                   (-snoc (when tmux-buffer (list "-b" tmux-buffer)) temp))
-            (when with-buffer
-              (funcall with-buffer tmux-buffer)))
-        (delete-file temp))))
+        (temp (make-temp-file "turnip")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp
+            (insert-buffer-substring-no-properties buffer start end)
+            (run-hooks turnip-send-region-prepare-hook))
+          (apply #'turnip:call "load-buffer"
+                 (-snoc (when tmux-buffer (list "-b" tmux-buffer)) temp))
+          (when with-buffer
+            (funcall with-buffer tmux-buffer)))
+      (delete-file temp))))
 
 ;;;###autoload
 (defun turnip-send-region (start end target &optional before-keys)
