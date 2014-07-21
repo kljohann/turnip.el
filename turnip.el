@@ -168,7 +168,7 @@ EXTRA may contain further information that is appended to the message."
       output)))
 
 (defun turnip:call->lines (&rest arguments)
-  "Call a tmux with the specified arguments.
+  "Call tmux with the specified arguments.
 The command output will be split on newline characters."
   (s-lines (apply #'turnip:call arguments)))
 
@@ -386,6 +386,21 @@ gives an empty answer."
         (if (> (point-max) (point-min))
             (display-message-or-buffer (current-buffer))
           (message (turnip:format-status status)))))))
+
+;;;###autoload
+(defun turnip-yank-from-buffer (&optional buffer)
+  "Yank from tmux buffer with index BUFFER.
+If no argument is provided the paste-buffer is used."
+  (interactive
+   (let* ((buffers (turnip:list-buffers))
+          (choice (completing-read "Buffer: " buffers nil 'confirm)))
+     (when (s-equals? choice "")
+       (setq choice nil))
+     (list choice)))
+
+  (insert
+   (apply #'turnip:call "show-buffer"
+          (when buffer (list  "-b" buffer)))))
 
 ;;;###autoload
 (defun turnip-send-region-to-buffer (start end &optional tmux-buffer with-buffer)
