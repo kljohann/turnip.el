@@ -392,11 +392,11 @@ gives an empty answer."
   "Yank from tmux buffer with index BUFFER.
 If no argument is provided the paste-buffer is used."
   (interactive
-   (let* ((buffers (turnip:list-buffers))
+   (let* ((buffers (turnip:call->lines "list-buffers" "-F" "#{line}: #{buffer_sample}"))
           (choice (completing-read "Buffer: " buffers nil 'confirm)))
-     (when (s-equals? choice "")
-       (setq choice nil))
-     (list choice)))
+     (list
+      (when (string-match "^[0-9]+" choice)
+        (match-string-no-properties 0 choice)))))
 
   (insert
    (apply #'turnip:call "show-buffer"
