@@ -212,34 +212,50 @@ session are included without a session prefix."
   (let
       ((option-names
         (->> line
-          (s-match-strings-all "[[|]-\\(\\w+\\)")
+          (s-match-strings-all (rx (any "[|") "-" (group (+ word))))
           (-map #'cadr)
           (apply #'concat)))
        (option-arguments
         (-when-let*
             ((matches (s-match-strings-all
-                       "[[|]\\(-\\w\\)\\s-+\\([^]|]+\\)[]|]" line)))
+                       (rx (any "[|")
+                           (group "-" word)
+                           (+ whitespace)
+                           (group (+ (not (any "|]"))))
+                           (any "|]"))
+                       line)))
           (-map
            (lambda (match)
              (cons (cadr match) (-last-item match)))
            matches))))
     (cons option-names option-arguments)))
 
+(defun turnip:parse-command (line)
+  "Parse LINE as formatted in tmux' list-commands output."
+  (-when-let*
+      ((match (s-match
+               (rx bol
+                   ;; command name
+                   (group (+ (not (any whitespace))))
+                   ;; rest (alias, options)
+                   (optional (+ whitespace)
+                             (group (+ nonl)))
+                   eol)
+               line))
+       (cmd (cadr match))
+       (rest (-last-item match)))
+    (let ((options (turnip:parse-command-options rest))
+          (alias (cadr (s-match
+                        (rx "(" (group (+? nonl)) ")")
+                        rest))))
+      (append
+       (list (cons cmd options))
+       (when alias
+         (list (cons alias options)))))))
+
 (defun turnip:list-commands ()
   (let ((lines (turnip:call->lines "list-commands")))
-    (apply
-     #'append
-     (-map (lambda (line)
-             (-when-let*
-                 ((match (s-match "^\\(\\S-+\\)\\(?:\\s-+\\(.*\\)\\)?$" line))
-                  (cmd (cadr match))
-                  (rest (-last-item match)))
-               (let ((options (turnip:parse-command-options rest))
-                     (alias (cadr (s-match "(\\([^)]+\\))" rest))))
-                 (append
-                  (list (cons cmd options))
-                  (when alias
-                    (list (cons alias options))))))) lines))))
+    (apply #'append (mapcar #'turnip:parse-command lines))))
 
 (defun turnip:completions-for-argument (arg &optional session)
   (cond
