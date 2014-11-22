@@ -337,15 +337,15 @@ This also resets the last used pane."
   "Prompt for a tmux pane if called interactively.
 The last used pane is saved and used as a default on subsequent calls. "
   (interactive
-   (let* ((default turnip:last-pane)
-          (prompt
-           (concat "Pane" (turnip:format-pane-id default " [#S:#W.#P]") ": "))
-          (choice (completing-read prompt (turnip:list-panes) nil t)))
+   (let* ((default (turnip:format-pane-id turnip:last-pane "#S:#W.#P"))
+          (prompt (if default
+                      (concat "Pane [" default "]: ")
+                    "Pane: "))
+          (choice (completing-read prompt (turnip:list-panes)
+                                   nil t nil nil default)))
 
      (when (s-equals? choice "")
-       (if default
-           (setq choice default)
-         (user-error "No target pane provided")))
+       (user-error "No target pane provided"))
      (list choice)))
 
   (setq turnip:last-pane (turnip:normalize-and-check-target-pane target)))
