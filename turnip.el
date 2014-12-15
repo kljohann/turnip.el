@@ -257,7 +257,7 @@ session are included without a session prefix."
              (s-prefix? "target" current))
         (if (-contains? arguments "-s")
             "target-session"
-          "targe-window"))
+          "target-window"))
        (t current)))))
 
 (defun turnip:normalize-argument-value (argument value &optional session)
