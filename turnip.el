@@ -267,14 +267,18 @@ session are included without a session prefix."
 
 (defun turnip:normalize-argument-type (arguments current)
   (when current
-    (let ((cmd (car arguments)))
-      (cond
-       ((and (-contains? '("list-panes" "lsp") cmd)
-             (s-prefix? "target" current))
-        (if (-contains? arguments "-s")
-            "target-session"
-          "target-window"))
-       (t current)))))
+    (or (let ((cmd (car arguments)))
+          (when (s-prefix? "target" current)
+            (cond
+             ((-contains? '("list-panes" "lsp") cmd)
+              (if (-contains? arguments "-s")
+                  "target-session"
+                "target-window"))
+             ((-contains? '("set-option" "set" "show-options" "show") cmd)
+              (if (-contains? arguments "-w")
+                  "target-window"
+                "target-session")))))
+        current)))
 
 (defun turnip:normalize-argument-value (argument value &optional session)
   (cond
