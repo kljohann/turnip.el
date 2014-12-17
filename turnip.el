@@ -287,12 +287,13 @@ session are included without a session prefix."
     (turnip:qualify value session))
    (t value)))
 
-(defun turnip:prompt-for-command (&optional session)
+(defun turnip:prompt-for-command (&optional initial-arguments session)
   "Interactively prompts for a tmux command to execute.
 See `turnip-command'."
   (-when-let* ((commands (turnip:list-commands))
                (command-names (-map #'car commands))
-               (choice (completing-read "tmux " command-names nil t)))
+               (choice (or (pop initial-arguments)
+                           (completing-read "tmux " command-names nil t))))
     (let* ((options (cdr (assoc choice commands)))
            (option-names
             (-map
@@ -314,13 +315,15 @@ See `turnip-command'."
                (turnip:normalize-argument-type
                 arguments (cdr (assoc choice option-arguments)))))
           (if (not takes-argument)
-              (setq choice (completing-read prompt option-names))
+              (setq choice (or (pop initial-arguments)
+                               (completing-read prompt option-names)))
             (setq choice "")
             (while (s-equals? choice "")
               (setq choice
-                    (completing-read
-                     (format "%s[%s] " prompt takes-argument)
-                     (turnip:completions-for-argument takes-argument session))))
+                    (or (pop initial-arguments)
+                        (completing-read
+                         (format "%s[%s] " prompt takes-argument)
+                         (turnip:completions-for-argument takes-argument session)))))
             (setq choice
                   (turnip:normalize-argument-value
                    takes-argument choice session)))))
@@ -371,14 +374,14 @@ The last used pane is saved and used as a default on subsequent calls. "
   (setq turnip:last-pane (turnip:normalize-and-check-target-pane target)))
 
 ;;;###autoload
-(defun turnip-command ()
+(defun turnip-command (&rest initial-arguments)
   "Interactively prompts for a tmux command to execute.
 The command will be built in several steps.  First the user can choose
 the tmux command to run.  In the next prompts completion for the options
 of this command is provided.  The command will be executed once the user
 gives an empty answer."
   (interactive)
-  (let* ((arguments (turnip:prompt-for-command))
+  (let* ((arguments (turnip:prompt-for-command initial-arguments))
          (command (car arguments))
          (argument-types (cddr (assoc command (turnip:list-commands)))))
     (when turnip:attached-session
