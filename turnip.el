@@ -470,7 +470,7 @@ If called interactively the last used pane is saved and used as a default on sub
   (unless before-keys
     (setq before-keys turnip-send-region-before-keys))
 
-  (unless (called-interactively-p)
+  (unless (called-interactively-p 'any)
     (setq target (turnip:normalize-and-check-target-pane target)))
 
   (turnip-send-region-to-buffer
