@@ -45,8 +45,9 @@ See `turnip-send-region' for where this is used."
 
 (defcustom turnip-send-region-prepare-hook nil
   "Hook to run when sending text to tmux.
-The Hook will run on a temporary buffer containing the text to be sent.
-The pane id of the target pane will be passed as a parameter.
+The hook will run on a temporary buffer containing the text to be sent.
+The original buffer and the start and end character positions will be
+passed as a parameters.
 This may be useful to unindent code intended for a python REPL, for example."
   :group 'turnip
   :type 'hook)
@@ -446,7 +447,8 @@ If no mark is set defaults to send the whole buffer."
         (progn
           (with-temp-file temp
             (insert-buffer-substring-no-properties buffer start end)
-            (run-hooks turnip-send-region-prepare-hook))
+            (run-hook-with-args
+             'turnip-send-region-prepare-hook buffer start end))
           (apply #'turnip:call "load-buffer"
                  (-snoc (when tmux-buffer (list "-b" tmux-buffer)) temp))
           (when with-buffer
